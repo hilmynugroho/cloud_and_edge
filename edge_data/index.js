@@ -8,8 +8,13 @@ const app = express();
 const port = 3001;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173', // Replace with the frontend URL
+  methods: 'GET,POST,PUT,DELETE',  // Specify allowed methods
+  allowedHeaders: 'Content-Type',  // Specify allowed headers
+}));
 app.use(bodyParser.json());
+// app.use(express.json());
 
 // Connect to PostgreSQL
 const pool = new Pool({
@@ -20,59 +25,41 @@ const pool = new Pool({
   port: 5432,
 });
 
-// Route to fetch all tasks
+// Define a GET route for the root
+app.get('/', (req, res) => {
+  res.send('Server is running');
+});
+
+// GET route to fetch all tasks
 app.get('/tasks', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM tasks ORDER BY id ASC');
-    res.json(result.rows);
+    const result = await pool.query('SELECT * FROM tasks');
+    return res.status(200).json(result.rows); // Send all tasks to the frontend
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
+    console.error('Error fetching tasks from database:', err);
+    return res.status(500).json({ error: 'An error occurred while fetching tasks' });
   }
 });
 
-// Route to add a new task
+// POST route for tasks (with DB interaction)
 app.post('/tasks', async (req, res) => {
-  const { task_text } = req.body;
+  const { task } = req.body; // Access the task field, not tasks
+
+  if (!task) {
+    return res.status(400).json({ error: 'Task is required' });
+  }
+
   try {
-    const result = await pool.query(
-      'INSERT INTO tasks (task_text) VALUES ($1) RETURNING *',
-      [task_text]
-    );
-    res.json(result.rows[0]);
+    // Insert the task into the database
+    const result = await pool.query('INSERT INTO tasks (task) VALUES ($1) RETURNING *', [task]);
+
+    // Send a success response with the inserted task
+    return res.status(201).json({ message: 'Task added successfully', task: result.rows[0] });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
+    console.error('Error saving task to database:', err);
+    return res.status(500).json({ error: 'An error occurred while saving the task' });
   }
 });
-
-// Route to delete a task
-app.delete('/tasks/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    await pool.query('DELETE FROM tasks WHERE id = $1', [id]);
-    res.json({ message: 'Task deleted' });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
-  }
-});
-
-// Route to update task status
-// app.put('/tasks/:id', async (req, res) => {
-//   const { id } = req.params;
-//   const { status } = req.body;
-//   try {
-//     const result = await pool.query(
-//       'UPDATE tasks SET status = $1 WHERE id = $2 RETURNING *',
-//       [status, id]
-//     );
-//     res.json(result.rows[0]);
-//   } catch (err) {
-//     console.error(err.message);
-//     res.status(500).send('Server Error');
-//   }
-// });
 
 // Start the server
 app.listen(port, () => {
